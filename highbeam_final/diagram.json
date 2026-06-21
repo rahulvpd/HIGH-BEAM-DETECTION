@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "author": "High Beam Detection Project",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "ldr1",
+      "top": -100,
+      "left": 200,
+      "attrs": { "lux": "500" }
+    },
+    {
+      "type": "wokwi-slide-switch",
+      "id": "vehicle1",
+      "top": -100,
+      "left": 350,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": 100,
+      "left": 200,
+      "attrs": { "color": "red" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led2",
+      "top": 100,
+      "left": 280,
+      "attrs": { "color": "green" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buz1",
+      "top": 100,
+      "left": 350,
+      "attrs": { "volume": "0.5" }
+    },
+    {
+      "type": "wokwi-lcd1602",
+      "id": "lcd1",
+      "top": 200,
+      "left": 200,
+      "attrs": { "pins": "i2c" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 50,
+      "left": 200,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": 50,
+      "left": 280,
+      "attrs": { "value": "220" }
+    }
+  ],
+  "connections": [
+    ["esp:3V3", "ldr1:VCC", "red", []],
+    ["esp:GND.1", "ldr1:GND", "black", []],
+    ["ldr1:AO", "esp:34", "green", []],
+
+    ["vehicle1:2", "esp:35", "yellow", []],
+    ["vehicle1:1", "esp:GND.2", "black", []],
+
+    ["esp:32", "r1:1", "orange", []],
+    ["r1:2", "led1:A", "orange", []],
+    ["led1:C", "esp:GND.3", "black", []],
+
+    ["esp:33", "r2:1", "blue", []],
+    ["r2:2", "led2:A", "blue", []],
+    ["led2:C", "esp:GND.4", "black", []],
+
+    ["esp:25", "buz1:1", "purple", []],
+    ["buz1:2", "esp:GND.5", "black", []],
+
+    ["esp:21", "lcd1:SDA", "green", []],
+    ["esp:22", "lcd1:SCL", "blue", []],
+    ["esp:VIN", "lcd1:VCC", "red", []],
+    ["esp:GND.6", "lcd1:GND", "black", []]
+  ]
+}

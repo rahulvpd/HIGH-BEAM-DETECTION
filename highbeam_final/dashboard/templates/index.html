@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HighBeam AI — 3D Detection Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/orbitron@5/index.css');
+
+:root {
+  --neon: #39ff14;
+  --blue: #00d4ff;
+  --red: #ff073a;
+  --amber: #ffb700;
+  --bg: #030712;
+  --glass: rgba(0,255,136,0.04);
+  --glass-border: rgba(0,255,136,0.13);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+  height: 100vh;
+}
+
+#three-canvas { position:fixed; inset:0; z-index:0; }
+
+#flash {
+  position:fixed; inset:0; z-index:5; pointer-events:none; opacity:0;
+  background: radial-gradient(ellipse at center,rgba(255,7,58,0.25) 0%,transparent 70%);
+  transition: opacity 0.1s;
+}
+
+body::after {
+  content:''; position:fixed; inset:0; z-index:4;
+  background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+  pointer-events:none;
+}
+
+.glass {
+  position:fixed; z-index:10;
+  background: rgba(3,7,18,0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  color: #c8ffdc;
+  overflow: hidden;
+}
+.glass::before {
+  content:''; position:absolute; inset:0; border-radius:16px;
+  background: linear-gradient(135deg,rgba(57,255,20,0.04) 0%,transparent 60%);
+  pointer-events:none;
+}
+
+/* ── HEADER ── */
+#header { top:16px; left:16px; right:16px; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; border-radius:14px; }
+.logo { font-family:'Orbitron','Courier New',monospace; font-size:15px; font-weight:900; letter-spacing:4px; color:var(--neon); text-shadow:0 0 24px rgba(57,255,20,0.7),0 0 48px rgba(57,255,20,0.3); }
+.logo span { color:var(--blue); text-shadow:0 0 24px rgba(0,212,255,0.7); }
+.hdr-right { display:flex; align-items:center; gap:20px; }
+.live-dot { width:8px; height:8px; border-radius:50%; background:var(--neon); box-shadow:0 0 12px var(--neon); animation:pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(0.8)} }
+.hdr-time { font-size:12px; letter-spacing:2px; color:rgba(200,255,220,0.5); }
+.hdr-loc { font-size:10px; letter-spacing:1px; color:var(--blue); opacity:0.7; }
+
+/* ── LEFT PANELS ── */
+#lux-panel { left:16px; top:90px; width:220px; padding:20px; }
+.panel-label { font-size:9px; letter-spacing:3px; color:rgba(200,255,220,0.45); margin-bottom:8px; }
+.lux-value { font-family:'Orbitron',monospace; font-size:56px; font-weight:900; line-height:1; color:var(--neon); text-shadow:0 0 30px rgba(57,255,20,0.6); transition:color 0.3s,text-shadow 0.3s; }
+.lux-unit { font-size:12px; color:rgba(200,255,220,0.4); letter-spacing:2px; margin-top:4px; }
+.lux-bar-track { height:4px; background:rgba(57,255,20,0.1); border-radius:2px; margin-top:14px; overflow:hidden; }
+.lux-bar-fill { height:100%; border-radius:2px; background:var(--neon); box-shadow:0 0 8px var(--neon); transition:width 0.4s ease,background 0.3s; }
+/* FIX: threshold marker on the lux bar */
+.lux-bar-wrap { position:relative; }
+.thresh-marker { position:absolute; top:-4px; width:2px; height:12px; background:rgba(255,183,0,0.8); border-radius:1px; transform:translateX(-50%); }
+.thresh-label { position:absolute; top:10px; font-size:8px; color:rgba(255,183,0,0.7); letter-spacing:1px; transform:translateX(-50%); white-space:nowrap; }
+
+#vehicle-panel { left:16px; top:230px; width:220px; padding:18px 20px; }
+.vehicle-indicator { display:flex; align-items:center; gap:10px; margin-top:6px; }
+.v-dot { width:10px; height:10px; border-radius:50%; background:rgba(200,255,220,0.2); transition:background 0.3s,box-shadow 0.3s; }
+.v-dot.active { background:var(--neon); box-shadow:0 0 10px var(--neon); }
+.v-label { font-size:13px; letter-spacing:1px; }
+
+#conf-panel { left:16px; top:330px; width:220px; padding:18px 20px; }
+.conf-ring-wrap { display:flex; justify-content:center; margin-top:10px; }
+.conf-ring { position:relative; width:80px; height:80px; }
+.conf-ring svg { width:80px; height:80px; transform:rotate(-90deg); }
+.conf-ring circle { transition:stroke-dashoffset 0.5s ease; }
+.conf-center { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Orbitron',monospace; font-size:16px; font-weight:700; color:var(--neon); }
+
+/* FIX: Threshold panel below conf */
+#thresh-panel { left:16px; top:490px; width:220px; padding:16px 20px; }
+.thresh-row { display:flex; align-items:center; justify-content:space-between; margin-top:8px; gap:6px; }
+.thresh-input {
+  width:70px; padding:5px 8px;
+  background:rgba(0,0,0,0.4); border:1px solid rgba(57,255,20,0.25);
+  border-radius:6px; color:var(--neon);
+  font-family:'Courier New',monospace; font-size:13px; text-align:center;
+}
+.thresh-input:focus { outline:none; border-color:var(--neon); }
+.thresh-btn {
+  flex:1; padding:6px 0;
+  background:rgba(57,255,20,0.12); border:1px solid rgba(57,255,20,0.3);
+  border-radius:6px; color:var(--neon);
+  font-family:'Courier New',monospace; font-size:10px; letter-spacing:1px;
+  cursor:pointer; transition:all 0.2s;
+}
+.thresh-btn:hover { background:rgba(57,255,20,0.22); }
+.thresh-status { font-size:9px; color:rgba(200,255,220,0.4); margin-top:6px; letter-spacing:1px; }
+
+/* ── RIGHT PANELS ── */
+#stats-panel { right:16px; top:90px; width:220px; padding:20px; }
+.stat-item { margin-bottom:18px; }
+.stat-item:last-child { margin-bottom:0; }
+.stat-val { font-family:'Orbitron',monospace; font-size:32px; font-weight:700; color:#fff; text-shadow:0 0 20px rgba(255,255,255,0.2); line-height:1; }
+.stat-val.red   { color:var(--red);   text-shadow:0 0 20px rgba(255,7,58,0.5); }
+.stat-val.blue  { color:var(--blue);  text-shadow:0 0 20px rgba(0,212,255,0.5); }
+.stat-val.amber { color:var(--amber); text-shadow:0 0 20px rgba(255,183,0,0.5); }
+
+#aws-panel { right:16px; top:370px; width:220px; padding:18px 20px; }
+.aws-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid rgba(57,255,20,0.05); font-size:11px; }
+.aws-row:last-child { border-bottom:none; }
+.aws-key { color:rgba(200,255,220,0.45); letter-spacing:1px; }
+.aws-val { color:var(--neon); font-size:10px; letter-spacing:1px; }
+.aws-dot-row { display:flex; align-items:center; gap:5px; }
+.aws-dot-indicator { width:5px; height:5px; border-radius:50%; background:var(--neon); box-shadow:0 0 5px var(--neon); animation:pulse 2s ease-in-out infinite; }
+/* FIX: simulated dot style */
+.aws-dot-sim { background:rgba(255,183,0,0.7); box-shadow:0 0 5px rgba(255,183,0,0.5); }
+
+/* ── DECISION BADGE ── */
+#decision-badge { bottom:120px; left:50%; transform:translateX(-50%); padding:14px 48px; text-align:center; transition:all 0.3s; white-space:nowrap; }
+.decision-state { font-family:'Orbitron',monospace; font-size:22px; font-weight:900; letter-spacing:6px; color:var(--neon); text-shadow:0 0 30px rgba(57,255,20,0.7); transition:color 0.3s,text-shadow 0.3s; }
+.decision-sub { font-size:10px; letter-spacing:3px; color:rgba(200,255,220,0.4); margin-top:4px; }
+
+/* ── VIOLATION FEED ── */
+#feed-panel { bottom:16px; left:16px; right:16px; height:80px; padding:12px 20px; display:flex; flex-direction:column; justify-content:space-between; }
+.feed-header { display:flex; align-items:center; justify-content:space-between; }
+.feed-title { font-size:9px; letter-spacing:3px; color:rgba(200,255,220,0.4); }
+.feed-count { font-family:'Orbitron',monospace; font-size:10px; color:var(--neon); }
+.feed-scroll { overflow:hidden; height:36px; position:relative; }
+.feed-item { position:absolute; width:100%; font-size:11px; color:rgba(200,255,220,0.7); letter-spacing:1px; transition:opacity 0.5s; display:flex; justify-content:space-between; align-items:center; }
+.feed-plate { color:var(--blue); }
+.feed-fine  { color:var(--red); font-weight:bold; }
+.feed-time  { color:rgba(200,255,220,0.3); font-size:10px; }
+
+/* ── CORNERS ── */
+.corner { position:fixed; z-index:8; width:40px; height:40px; }
+.corner-tl { top:0; left:0;  border-top:2px solid var(--neon); border-left:2px solid var(--neon);  box-shadow:-2px -2px 10px rgba(57,255,20,0.3); }
+.corner-tr { top:0; right:0; border-top:2px solid var(--neon); border-right:2px solid var(--neon); box-shadow:2px -2px 10px rgba(57,255,20,0.3); }
+.corner-bl { bottom:0; left:0;  border-bottom:2px solid var(--neon); border-left:2px solid var(--neon);  box-shadow:-2px 2px 10px rgba(57,255,20,0.3); }
+.corner-br { bottom:0; right:0; border-bottom:2px solid var(--neon); border-right:2px solid var(--neon); box-shadow:2px 2px 10px rgba(57,255,20,0.3); }
+
+#beam-label { position:fixed; left:50%; top:90px; transform:translateX(-50%); z-index:10; text-align:center; pointer-events:none; }
+.beam-text { font-size:9px; letter-spacing:3px; color:rgba(200,255,220,0.3); animation:blink 2s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:.3} 50%{opacity:.8} }
+
+@keyframes vflash { 0%{opacity:0} 15%{opacity:1} 40%{opacity:.6} 100%{opacity:0} }
+.do-flash { animation:vflash 1.2s ease-out forwards !important; }
+
+.hdr-actions { display:flex; gap:8px; align-items:center; }
+.act-btn { padding:7px 14px; border:1px solid var(--glass-border); border-radius:8px; background:rgba(3,7,18,0.7); backdrop-filter:blur(12px); color:var(--neon); font-size:10px; font-family:'Courier New',monospace; letter-spacing:1px; cursor:pointer; transition:all 0.2s; }
+.act-btn:hover { background:rgba(57,255,20,0.1); box-shadow:0 0 12px rgba(57,255,20,0.2); }
+.act-btn.red { color:var(--red); border-color:rgba(255,7,58,0.3); }
+.act-btn.red:hover { background:rgba(255,7,58,0.1); box-shadow:0 0 12px rgba(255,7,58,0.2); }
+</style>
+</head>
+<body>
+
+<canvas id="three-canvas"></canvas>
+<div id="flash"></div>
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<!-- Header -->
+<div class="glass" id="header">
+  <div>
+    <div class="logo">HIGH<span>BEAM</span> AI</div>
+    <div class="hdr-loc">ANNA SALAI — CHENNAI — SECTOR 04</div>
+  </div>
+  <div class="hdr-right">
+    <div class="hdr-actions">
+      <a href="/" class="act-btn" style="text-decoration:none;color:var(--neon);border-color:var(--neon);background:rgba(57,255,20,0.12);">3D VIEW</a>
+      <a href="/classic" class="act-btn" style="text-decoration:none;">CLASSIC</a>
+      <button class="act-btn red" onclick="simulateViolation()">+ SIMULATE</button>
+      <button class="act-btn" onclick="exportCSV()">EXPORT CSV</button>
+    </div>
+    <div class="live-dot"></div>
+    <div>
+      <div class="hdr-time" id="clock">--:--:--</div>
+      <div class="hdr-loc">LIVE MONITORING</div>
+    </div>
+  </div>
+</div>
+
+<!-- Lux Panel -->
+<div class="glass" id="lux-panel">
+  <div class="panel-label">LDR INTENSITY</div>
+  <div class="lux-value" id="lux-val">000</div>
+  <div class="lux-unit">LUX UNITS</div>
+  <div class="lux-bar-wrap">
+    <div class="lux-bar-track"><div class="lux-bar-fill" id="lux-bar" style="width:0%"></div></div>
+    <div class="thresh-marker" id="thresh-marker" style="left:68%"></div>
+    <div class="thresh-label"  id="thresh-label"  style="left:68%">740</div>
+  </div>
+</div>
+
+<!-- Vehicle Panel -->
+<div class="glass" id="vehicle-panel">
+  <div class="panel-label">VEHICLE DETECTION</div>
+  <div class="vehicle-indicator">
+    <div class="v-dot" id="vdot"></div>
+    <div class="v-label" id="vlabel">ROAD CLEAR</div>
+  </div>
+</div>
+
+<!-- Confidence Panel -->
+<div class="glass" id="conf-panel">
+  <div class="panel-label">AI CONFIDENCE</div>
+  <div class="conf-ring-wrap">
+    <div class="conf-ring">
+      <svg viewBox="0 0 80 80">
+        <circle cx="40" cy="40" r="30" fill="none" stroke="rgba(57,255,20,0.1)" stroke-width="6"/>
+        <circle id="conf-arc" cx="40" cy="40" r="30" fill="none" stroke="#39ff14"
+          stroke-width="6" stroke-linecap="round"
+          stroke-dasharray="188.5" stroke-dashoffset="188.5"/>
+      </svg>
+      <div class="conf-center" id="conf-pct">0%</div>
+    </div>
+  </div>
+</div>
+
+<!-- FIX: Threshold Control Panel -->
+<div class="glass" id="thresh-panel">
+  <div class="panel-label">THRESHOLD CONTROL</div>
+  <div class="thresh-row">
+    <span style="font-size:10px;color:rgba(200,255,220,0.5);">HIGH LUX</span>
+    <input class="thresh-input" id="thresh-input" type="number" min="740" max="740" value="740" readonly>
+    <button class="thresh-btn" onclick="applyThreshold()">SET</button>
+  </div>
+  <div class="thresh-status" id="thresh-status">THRESHOLD: 740 LUX</div>
+</div>
+
+<!-- Stats Panel -->
+<div class="glass" id="stats-panel">
+  <div class="stat-item">
+    <div class="panel-label">VIOLATIONS TODAY</div>
+    <div class="stat-val red" id="vcount">0</div>
+  </div>
+  <div class="stat-item">
+    <div class="panel-label">FINES COLLECTED</div>
+    <div class="stat-val amber" id="fines">₹0</div>
+  </div>
+  <div class="stat-item">
+    <div class="panel-label">AI ACCURACY</div>
+    <div class="stat-val blue" id="ai-acc">—</div>
+  </div>
+</div>
+
+<!-- AWS Panel -->
+<div class="glass" id="aws-panel">
+  <div class="panel-label" style="margin-bottom:10px;">AWS SERVICES</div>
+  <div class="aws-row"><span class="aws-key">DYNAMODB</span><span class="aws-dot-row"><div class="aws-dot-indicator" id="dot-db"></div><span class="aws-val" id="val-db">—</span></span></div>
+  <div class="aws-row"><span class="aws-key">SNS</span><span class="aws-dot-row"><div class="aws-dot-indicator" id="dot-sns" style="animation-delay:.3s"></div><span class="aws-val" id="val-sns">—</span></span></div>
+  <div class="aws-row"><span class="aws-key">SES</span><span class="aws-dot-row"><div class="aws-dot-indicator" id="dot-ses" style="animation-delay:.6s"></div><span class="aws-val" id="val-ses">—</span></span></div>
+  <div class="aws-row"><span class="aws-key">IOT CORE</span><span class="aws-dot-row"><div class="aws-dot-indicator" id="dot-iot" style="animation-delay:.9s"></div><span class="aws-val" id="val-iot">—</span></span></div>
+  <div class="aws-row"><span class="aws-key">S3</span><span class="aws-dot-row"><div class="aws-dot-indicator" id="dot-s3" style="animation-delay:1.2s"></div><span class="aws-val" id="val-s3">—</span></span></div>
+  <div class="aws-row"><span class="aws-key">REGION</span><span class="aws-val">AP-SOUTH-1</span></div>
+</div>
+
+<div id="beam-label"><div class="beam-text">IR SENSOR BEAM ACTIVE</div></div>
+
+<!-- Decision Badge -->
+<div class="glass" id="decision-badge">
+  <div class="decision-state" id="dec-text">CLEAR</div>
+  <div class="decision-sub">AI DETECTION DECISION</div>
+</div>
+
+<!-- Feed -->
+<div class="glass" id="feed-panel">
+  <div class="feed-header">
+    <div class="feed-title">VIOLATION FEED</div>
+    <div class="feed-count" id="feed-count">0 EVENTS</div>
+  </div>
+  <div class="feed-scroll">
+    <div class="feed-item" id="feed-item">
+      <span style="color:rgba(200,255,220,0.25);letter-spacing:2px;font-size:11px;">MONITORING ROAD... AWAITING EVENTS</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── THREE.JS SCENE ──────────────────────────────────────
+const canvas = document.getElementById('three-canvas');
+const W = window.innerWidth, H = window.innerHeight;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030712);
+scene.fog = new THREE.FogExp2(0x030712, 0.028);
+
+const camera = new THREE.PerspectiveCamera(55, W/H, 0.1, 400);
+camera.position.set(0, 4.5, 14);
+camera.lookAt(0, 1, -30);
+
+const ambient    = new THREE.AmbientLight(0x030f1a, 3);
+const greenLight = new THREE.PointLight(0x39ff14, 4, 30);
+greenLight.position.set(-5, 6, 2);
+const blueLight  = new THREE.PointLight(0x00d4ff, 3, 25);
+blueLight.position.set(5, 4, -5);
+scene.add(ambient, greenLight, blueLight);
+
+// Road
+const road = new THREE.Mesh(new THREE.PlaneGeometry(12,200), new THREE.MeshStandardMaterial({color:0x0a0e18,roughness:0.9,metalness:0.1}));
+road.rotation.x = -Math.PI/2; road.position.set(0,0,-80); scene.add(road);
+const edgeMat = new THREE.MeshBasicMaterial({color:0x39ff14,transparent:true,opacity:0.5});
+const edgeGeo = new THREE.BoxGeometry(0.08,0.02,200);
+[-6,6].forEach(x=>{ const e=new THREE.Mesh(edgeGeo,edgeMat); e.position.set(x,0.01,-80); scene.add(e); });
+const dashMat = new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.15});
+for(let i=-90;i<20;i+=8){ const d=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.02,4),dashMat); d.position.set(0,0.01,i); scene.add(d); }
+const gMat = new THREE.MeshStandardMaterial({color:0x060c14,roughness:1});
+[-36,36].forEach(x=>{ const g=new THREE.Mesh(new THREE.PlaneGeometry(60,200),gMat); g.rotation.x=-Math.PI/2; g.position.set(x,-0.01,-80); scene.add(g); });
+
+// Sensor pole
+const poleMat = new THREE.MeshStandardMaterial({color:0x1a2535,metalness:0.7,roughness:0.3});
+const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.1,5,8),poleMat);
+pole.position.set(-7,2.5,2); scene.add(pole);
+const sensorBox = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.3,0.5), new THREE.MeshStandardMaterial({color:0x253045,metalness:0.8}));
+sensorBox.position.set(-7,5.3,2); scene.add(sensorBox);
+const sensorLight = new THREE.PointLight(0x39ff14,2,15);
+sensorLight.position.set(-7,5.5,2); scene.add(sensorLight);
+
+// Beam cone
+const beamGeo = new THREE.ConeGeometry(3,8,16,1,true);
+const beamMat = new THREE.MeshBasicMaterial({color:0x39ff14,transparent:true,opacity:0.07,side:THREE.DoubleSide,depthWrite:false});
+const beam = new THREE.Mesh(beamGeo,beamMat);
+beam.position.set(-4,2,0); beam.rotation.z=Math.PI/5; beam.rotation.y=-0.2; scene.add(beam);
+const beamWire = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({color:0x39ff14,wireframe:true,transparent:true,opacity:0.12}));
+beamWire.position.copy(beam.position); beamWire.rotation.copy(beam.rotation); scene.add(beamWire);
+
+// Car
+const carGroup = new THREE.Group();
+const carBody = new THREE.Mesh(new THREE.BoxGeometry(2.2,0.9,4.2), new THREE.MeshStandardMaterial({color:0x1a2a4a,metalness:0.6,roughness:0.4}));
+carBody.position.y = 0.55; carGroup.add(carBody);
+const carRoof = new THREE.Mesh(new THREE.BoxGeometry(1.8,0.7,2.4), new THREE.MeshStandardMaterial({color:0x111e33,metalness:0.5,roughness:0.5}));
+carRoof.position.set(0,1.3,0.2); carGroup.add(carRoof);
+const headlightMat = new THREE.MeshBasicMaterial({color:0xffffff});
+const hlL = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,0.1),headlightMat);
+hlL.position.set(-0.7,0.5,2.1);
+const hlR = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,0.1),headlightMat);
+hlR.position.set(0.7,0.5,2.1);
+carGroup.add(hlL,hlR);
+const hlLightL = new THREE.PointLight(0xffffff,0,12); hlLightL.position.set(-0.7,0.5,2.5);
+const hlLightR = new THREE.PointLight(0xffffff,0,12); hlLightR.position.set(0.7,0.5,2.5);
+carGroup.add(hlLightL,hlLightR);
+const wheelMat = new THREE.MeshStandardMaterial({color:0x080c14,roughness:1});
+const rimMat   = new THREE.MeshStandardMaterial({color:0x3a4a6a,metalness:0.8,roughness:0.2});
+[-1,1].forEach(sx=>{ [-1.4,1.4].forEach(sz=>{ const w=new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,0.25,12),wheelMat); w.rotation.z=Math.PI/2; w.position.set(sx*1.2,0.42,sz); carGroup.add(w); const rim=new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.25,0.27,6),rimMat); rim.rotation.z=Math.PI/2; rim.position.copy(w.position); carGroup.add(rim); }); });
+carGroup.position.set(0,0,-60); scene.add(carGroup);
+
+// Stars
+const starPositions = new Float32Array(800*3);
+for(let i=0;i<800;i++){ starPositions[i*3]=(Math.random()-0.5)*200; starPositions[i*3+1]=Math.random()*50+5; starPositions[i*3+2]=(Math.random()-0.5)*200-50; }
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position',new THREE.BufferAttribute(starPositions,3));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({color:0x8ad0ff,size:0.12,transparent:true,opacity:0.6})));
+
+// ── STATE ──────────────────────────────────────────────
+let carZ=-60, carSpeed=0.18, state='CLEAR', violationCount=0, totalFines=0;
+let luxVal=150, targetLux=150, vehiclePresent=false, statePhase='approach';
+let useRealData=false, realLux=0, realVehicle=false, realDecision='CLEAR', realConf=0;
+// FIX: backend threshold tracked so demo mode uses correct value
+let backendThreshold = 740;
+
+const plates=['TN01AB1234','TN02CD5678','TN03EF9012','MH04GH3456','KA05IJ7890'];
+let plateIdx=0;
+const violations=[];
+
+// HUD refs
+const luxEl   = document.getElementById('lux-val');
+const luxBar  = document.getElementById('lux-bar');
+const vdot    = document.getElementById('vdot');
+const vlabel  = document.getElementById('vlabel');
+const confArc = document.getElementById('conf-arc');
+const confPct = document.getElementById('conf-pct');
+const decText = document.getElementById('dec-text');
+const decBadge= document.getElementById('decision-badge');
+const vcountEl= document.getElementById('vcount');
+const finesEl = document.getElementById('fines');
+const feedItem= document.getElementById('feed-item');
+const feedCount=document.getElementById('feed-count');
+const flashEl = document.getElementById('flash');
+const clockEl = document.getElementById('clock');
+
+function setDecision(s) {
+  state = s;
+  const cfg = {
+    CLEAR:    {text:'CLEAR',        color:'#39ff14',shadow:'rgba(57,255,20,0.7)',  border:'rgba(57,255,20,0.13)'},
+    NORMAL:   {text:'NORMAL BEAM',  color:'#00d4ff',shadow:'rgba(0,212,255,0.7)', border:'rgba(0,212,255,0.15)'},
+    WARNING:  {text:'WARNING',      color:'#ffb700',shadow:'rgba(255,183,0,0.7)', border:'rgba(255,183,0,0.15)'},
+    VIOLATION:{text:'VIOLATION',    color:'#ff073a',shadow:'rgba(255,7,58,0.8)',  border:'rgba(255,7,58,0.3)'},
+  };
+  const c = cfg[s] || cfg.CLEAR;
+  decText.textContent = c.text;
+  decText.style.color = c.color;
+  decText.style.textShadow = `0 0 30px ${c.shadow}`;
+  decBadge.style.borderColor = c.border;
+  document.documentElement.style.setProperty('--neon',
+    s==='VIOLATION'?'#ff073a':s==='WARNING'?'#ffb700':'#39ff14');
+}
+
+function updateConf(pct) {
+  const offset = 188.5 - (pct/100)*188.5;
+  confArc.style.strokeDashoffset = offset;
+  confArc.style.stroke = pct>85?'#39ff14':pct>50?'#ffb700':'#ff073a';
+  confPct.textContent = pct+'%';
+}
+
+// FIX: updateLuxDisplay uses the actual backendThreshold for color
+function updateLuxDisplay(lux) {
+  const hi  = backendThreshold;
+  const lo  = Math.round(hi * 0.43);  // approx normal threshold
+  const max = Math.max(hi * 1.5, 1024);
+  const pct = Math.min(100, (lux / max) * 100);
+  luxEl.textContent = String(Math.round(lux)).padStart(3, '0');
+  luxBar.style.width = pct + '%';
+  const col = lux > hi ? '#ff073a' : lux > lo ? '#ffb700' : '#39ff14';
+  luxBar.style.background = col;
+  luxBar.style.boxShadow  = `0 0 8px ${col}`;
+  luxEl.style.color      = col;
+  luxEl.style.textShadow = lux > hi ? '0 0 30px rgba(255,7,58,0.6)' : '0 0 30px rgba(57,255,20,0.6)';
+
+  // FIX: position threshold marker on bar
+  const tPct = Math.min(98, (hi / max) * 100);
+  document.getElementById('thresh-marker').style.left = tPct + '%';
+  document.getElementById('thresh-label').style.left  = tPct + '%';
+  document.getElementById('thresh-label').textContent = hi;
+}
+
+function triggerViolation() {
+  return;
+  violationCount++;
+  const fine = violationCount > 1 && Math.random()>0.5 ? 1000 : 500;
+  totalFines += fine;
+  const plate = plates[plateIdx++ % plates.length];
+  const timeStr = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  vcountEl.textContent = violationCount;
+  finesEl.textContent  = '₹' + totalFines.toLocaleString();
+
+  violations.unshift({plate,fine,time:timeStr});
+  feedItem.innerHTML = `
+    <span class="feed-plate">${plate.slice(0,4)}**${plate.slice(6)}</span>
+    <span>HIGH BEAM VIOLATION</span>
+    <span class="feed-fine">₹${fine}</span>
+    <span class="feed-time">${timeStr}</span>`;
+  feedCount.textContent = violationCount+' EVENTS';
+
+  flashEl.classList.remove('do-flash');
+  void flashEl.offsetWidth;
+  flashEl.classList.add('do-flash');
+
+  beamMat.color.setHex(0xff073a); beamWire.material.color.setHex(0xff073a);
+  beamMat.opacity = 0.2; sensorLight.color.setHex(0xff073a);
+  setTimeout(()=>{
+    beamMat.color.setHex(0x39ff14); beamWire.material.color.setHex(0x39ff14);
+    beamMat.opacity = 0.07; sensorLight.color.setHex(0x39ff14);
+  }, 1200);
+}
+
+setInterval(()=>{ clockEl.textContent = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }, 1000);
+
+// ── ANIMATION LOOP ──────────────────────────────────────
+let clock3d = new THREE.Clock();
+const stars_ = scene.children.find(c => c instanceof THREE.Points);
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock3d.getElapsedTime();
+
+  carZ += carSpeed;
+  if (carZ > 16) {
+    carZ = -60;
+    statePhase = 'approach';
+    setDecision('CLEAR');
+    vehiclePresent = false;
+    hlLightL.intensity = 0; hlLightR.intensity = 0;
+    hlL.material.color.setHex(0x888888); hlR.material.color.setHex(0x888888);
+    targetLux = 100 + Math.random()*80;
+  }
+  carGroup.position.z = carZ;
+
+  if (useRealData) {
+    // Real data mode — 3D reacts to live sensor
+    if (realDecision === 'VIOLATION') {
+      hlLightL.intensity=4; hlLightR.intensity=4;
+      hlL.material.color.setHex(0xffffff); hlR.material.color.setHex(0xffffff);
+      beamMat.color.setHex(0xff073a); beamWire.material.color.setHex(0xff073a);
+      sensorLight.color.setHex(0xff073a);
+    } else if (realDecision === 'WARNING') {
+      hlLightL.intensity=2; hlLightR.intensity=2;
+      hlL.material.color.setHex(0xffffcc); hlR.material.color.setHex(0xffffcc);
+      beamMat.color.setHex(0xffb700); beamWire.material.color.setHex(0xffb700);
+      sensorLight.color.setHex(0xffb700);
+    } else {
+      hlLightL.intensity = realVehicle?1:0; hlLightR.intensity = realVehicle?1:0;
+      hlL.material.color.setHex(realVehicle?0xcccccc:0x888888);
+      hlR.material.color.setHex(realVehicle?0xcccccc:0x888888);
+      beamMat.color.setHex(0x39ff14); beamWire.material.color.setHex(0x39ff14);
+      sensorLight.color.setHex(0x39ff14);
+    }
+  } else {
+    // Demo mode — scripted using backendThreshold
+    const hi = backendThreshold;
+    if (carZ > -30 && carZ < 8) {
+      vehiclePresent = false;
+      vdot.classList.remove('active'); vlabel.textContent = 'WAITING FOR SENSOR';
+      if (carZ > -18 && carZ < 5) {
+        // FIX: targetLux based on actual backend threshold
+        targetLux = hi * 0.45 + Math.random() * (hi * 0.25);
+        hlLightL.intensity=3; hlLightR.intensity=3;
+        hlL.material.color.setHex(0xffffff); hlR.material.color.setHex(0xffffff);
+        if (statePhase === 'approach') {
+          statePhase = 'warning';
+          setDecision('WARNING');
+          updateConf(60);
+          // FIX: snap lux display immediately to avoid lag during warning->violation
+          luxVal = hi * 0.9 + Math.random() * hi * 0.05;
+        }
+        if (carZ > -10 && statePhase === 'warning') {
+          statePhase = 'violation';
+          setDecision('WARNING');
+          updateConf(100);
+          // FIX: snap lux immediately to targetLux so display matches decision
+          luxVal = targetLux;
+          triggerViolation();
+        }
+      } else {
+        targetLux = hi * 0.4 + Math.random() * (hi * 0.1);
+        hlLightL.intensity=0.5; hlLightR.intensity=0.5;
+        setDecision('NORMAL'); updateConf(0);
+      }
+    } else if (carZ <= -30) {
+      vehiclePresent = false;
+      vdot.classList.remove('active'); vlabel.textContent = 'ROAD CLEAR';
+      targetLux = 100 + Math.random()*80;
+      setDecision('CLEAR'); updateConf(0);
+    }
+    // Smooth lux only in warning/normal states (not during violation snap)
+    if (statePhase !== 'violation') {
+      luxVal += (targetLux - luxVal) * 0.08;  // FIX: faster interpolation (0.08 vs 0.04)
+    }
+    updateLuxDisplay(Math.round(luxVal));
+  }
+
+  beam.material.opacity = 0.05 + Math.sin(t*2)*0.02;
+  beamWire.material.opacity = 0.1 + Math.sin(t*3)*0.04;
+  camera.position.x = Math.sin(t*0.15)*0.3;
+  camera.position.y = 4.5 + Math.sin(t*0.2)*0.1;
+  camera.lookAt(0, 1.5, -30);
+  greenLight.intensity  = 3 + Math.sin(t*1.5)*0.8;
+  sensorLight.intensity = 1.5 + Math.sin(t*3)*0.5;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', ()=>{
+  const W=window.innerWidth, H=window.innerHeight;
+  renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix();
+});
+
+// ── FIX: AWS panel update helper ─────────────────────────────────
+function updateAWSPanel(isAWS) {
+  const dots = ['dot-db','dot-sns','dot-ses','dot-iot','dot-s3'];
+  const vals  = ['val-db','val-sns','val-ses','val-iot','val-s3'];
+  const labels = ['DynamoDB','SNS','SES','IoT Core','S3'];
+  dots.forEach((id,i) => {
+    const dot = document.getElementById(id);
+    dot.classList.toggle('aws-dot-sim', !isAWS);
+  });
+  vals.forEach((id,i) => {
+    document.getElementById(id).textContent = isAWS ? 'ACTIVE' : 'SIM';
+    document.getElementById(id).style.color = isAWS ? 'var(--neon)' : 'var(--amber)';
+  });
+}
+
+// ── REAL API INTEGRATION ─────────────────────────────────────────
+async function fetchStats() {
+  try {
+    const d = await (await fetch('/api/stats')).json();
+    const sensor = d.sensor || {};
+    const result = d.result || {};
+    const lux    = sensor.lux || 0;
+    const vehicle= sensor.vehicle_present || false;
+    const dec    = result.decision || 'CLEAR';
+    const conf   = result.confidence || 0;
+
+    // FIX: sync backend threshold to local state for demo mode + display
+    if (d.threshold) {
+      backendThreshold = d.threshold;
+      document.getElementById('thresh-input').value  = backendThreshold;
+      document.getElementById('thresh-status').textContent = `THRESHOLD: ${backendThreshold} LUX`;
+    }
+
+    if (Object.keys(sensor).length > 0) {
+      useRealData  = true;
+      realLux      = lux;
+      realVehicle  = vehicle;
+      realDecision = dec === 'FALSE_POSITIVE' ? 'CLEAR' : dec;
+      realConf     = conf;
+    } else {
+      useRealData  = false;
+      realLux      = 0;
+      realVehicle  = false;
+      realDecision = 'CLEAR';
+      realConf     = 0;
+    }
+
+    // FIX: Always use updateLuxDisplay (uses backendThreshold for colours)
+    updateLuxDisplay(lux);
+
+    if(vehicle){ vdot.classList.add('active'); vlabel.textContent='VEHICLE DETECTED'; }
+    else        { vdot.classList.remove('active'); vlabel.textContent='ROAD CLEAR'; }
+
+    updateConf(Math.round(conf*100));
+    setDecision(dec==='FALSE_POSITIVE'?'CLEAR':dec);
+
+    vcountEl.textContent = d.total_violations || 0;
+    finesEl.textContent  = '\u20B9'+(d.total_fine_amount||0).toLocaleString();
+
+    const accEl = document.getElementById('ai-acc');
+    if(accEl) accEl.textContent = (d.accuracy||0)+'%';
+
+    // FIX: dynamically update AWS panel
+    updateAWSPanel(d.aws_active || false);
+
+  } catch(e){}
+}
+
+async function fetchViolations() {
+  try {
+    const rows = await (await fetch('/api/violations')).json();
+    if(rows.length > 0) {
+      const v = rows[0];
+      const t = (v.timestamp||'').substring(11,19);
+      feedItem.innerHTML = `
+        <span class="feed-plate">${v.plate_masked}</span>
+        <span>HIGH BEAM VIOLATION</span>
+        <span class="feed-fine">\u20B9${v.fine_amount}</span>
+        <span class="feed-time">${t}</span>`;
+      feedCount.textContent = rows.length+' EVENTS';
+    }
+  } catch(e){}
+}
+
+// FIX: Threshold control
+async function applyThreshold() {
+  const val = 740;
+  document.getElementById('thresh-input').value = val;
+  try {
+    const r = await fetch('/api/threshold', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({high_beam_threshold: val})
+    });
+    const d = await r.json();
+    if(d.success) {
+      backendThreshold = d.high_beam_threshold;
+      document.getElementById('thresh-status').textContent = `THRESHOLD: ${backendThreshold} LUX  ✓`;
+    }
+  } catch(e) {
+    document.getElementById('thresh-status').textContent = 'UPDATE FAILED';
+  }
+}
+
+async function simulateViolation() {
+  const r = await fetch('/api/simulate',{method:'POST'});
+  const d = await r.json();
+  await fetchStats();
+  await fetchViolations();
+  flashEl.classList.remove('do-flash');
+  void flashEl.offsetWidth;
+  flashEl.classList.add('do-flash');
+}
+
+function exportCSV() { window.location.href='/api/export'; }
+
+setInterval(fetchStats,    2000);
+setInterval(fetchViolations,3000);
+fetchStats();
+fetchViolations();
+</script>
+</body>
+</html>

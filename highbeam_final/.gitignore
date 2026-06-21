@@ -1,0 +1,20 @@
+.pio
+.sixth
+__pycache__/
+*/__pycache__/
+*.pyc
+*.log
+backend/reports/
+backend/violations_local.db
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+
+# Local configuration / secrets
+.env
+.env.local
+backend/iot_certs/certificate.pem.crt
+backend/iot_certs/private.pem.key
+backend/iot_certs/public.pem.key
+

@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>High Beam Detection — Classic Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#0f1117;color:#e0e0e0;min-height:100vh;}
+.header{background:#1a1d27;border-bottom:1px solid #2a2d3a;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.header h1{font-size:16px;color:#fff;font-weight:600;}
+.header p{font-size:11px;color:#888;margin-top:2px;}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;margin-right:5px;animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+.aws-badge{padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600;}
+.aws-on{background:#14532d;color:#22c55e;}
+.aws-off{background:#374151;color:#9ca3af;}
+.hdr-btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.btn{padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:none;font-weight:600;}
+.btn-red{background:#ef4444;color:#fff;}
+.btn-teal{background:#0f6e56;color:#9fe1cb;}
+.btn-gray{background:#374151;color:#e0e0e0;}
+.btn-amber{background:#92400e;color:#fcd34d;}
+.tab-nav{display:flex;gap:4px;margin-right:10px;}
+.tab-btn{padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid #2a2d3a;font-weight:600;text-decoration:none;}
+.tab-btn.active{background:#22c55e;color:#000;border-color:#22c55e;}
+.tab-btn:not(.active){background:#1a1d27;color:#888;}
+.tab-btn:not(.active):hover{background:#2a2d3a;color:#e0e0e0;}
+
+.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:16px 22px;}
+.stat-card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:10px;padding:14px;}
+.stat-card .lbl{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;}
+.stat-card .val{font-size:22px;font-weight:700;margin-top:3px;}
+.stat-card .sub{font-size:10px;color:#555;margin-top:1px;}
+.v-red{color:#ef4444;}.v-green{color:#22c55e;}.v-yellow{color:#f59e0b;}
+.v-blue{color:#3b82f6;}.v-purple{color:#a855f7;}.v-teal{color:#2dd4bf;}
+
+/* FIX: Threshold banner — clear visual showing current threshold */
+.threshold-banner{
+  margin:0 22px 14px;
+  background:#1a1d27;border:1px solid #2a2d3a;border-radius:10px;
+  padding:12px 16px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+}
+.thresh-label-txt{font-size:11px;color:#6b7280;font-weight:600;letter-spacing:.5px;white-space:nowrap;}
+.thresh-display{
+  font-size:18px;font-weight:700;color:#f59e0b;min-width:60px;
+  font-family:'Courier New',monospace;letter-spacing:1px;
+}
+.thresh-range-wrap{flex:1;min-width:140px;position:relative;}
+.thresh-range{width:100%;accent-color:#f59e0b;cursor:pointer;}
+.thresh-number-input{
+  width:72px;padding:5px 8px;
+  background:#111827;border:1px solid #374151;border-radius:6px;
+  color:#f59e0b;font-size:13px;text-align:center;
+  font-family:'Courier New',monospace;
+}
+.thresh-number-input:focus{outline:none;border-color:#f59e0b;}
+.thresh-apply-btn{
+  padding:7px 16px;border-radius:6px;
+  background:#451a03;color:#fcd34d;
+  font-size:11px;font-weight:700;border:1px solid #92400e;cursor:pointer;
+  transition:all .2s;letter-spacing:.5px;
+}
+.thresh-apply-btn:hover{background:#92400e;}
+.thresh-apply-btn.saved{background:#14532d;color:#22c55e;border-color:#166534;}
+.thresh-hint{font-size:10px;color:#4b5563;}
+
+.sensor-panel{margin:0 22px 14px;background:#1a1d27;border:1px solid #2a2d3a;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
+.si{text-align:center;flex:1;min-width:80px;}
+.si .sl{font-size:10px;color:#888;margin-bottom:3px;}
+.si .sv{font-size:18px;font-weight:600;}
+.sdiv{width:1px;height:36px;background:#2a2d3a;}
+.status-badge{padding:5px 14px;border-radius:16px;font-size:12px;font-weight:600;}
+.sCLEAR{background:#14532d;color:#22c55e;}
+.sNORMAL{background:#1e3a5f;color:#60a5fa;}
+.sWARNING{background:#451a03;color:#f59e0b;}
+.sVIOLATION{background:#450a0a;color:#ef4444;animation:blink .5s infinite;}
+.sFALSE_POSITIVE{background:#2d1b69;color:#a855f7;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.5;}}
+
+.content{display:grid;grid-template-columns:1fr 320px;gap:14px;padding:0 22px 22px;}
+.panel{background:#1a1d27;border:1px solid #2a2d3a;border-radius:10px;overflow:hidden;}
+.ph{padding:12px 16px;border-bottom:1px solid #2a2d3a;display:flex;align-items:center;justify-content:space-between;}
+.ph h2{font-size:13px;font-weight:600;}
+
+table{width:100%;border-collapse:collapse;}
+th{background:#111827;padding:9px 12px;font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;text-align:left;}
+td{padding:10px 12px;font-size:12px;border-bottom:1px solid #1f2937;}
+tr:hover td{background:#1f2937;}
+.pill{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;}
+.pill-PENDING{background:#451a03;color:#f59e0b;}
+.pill-PAID{background:#14532d;color:#22c55e;}
+.pay-btn{padding:3px 9px;border-radius:4px;font-size:10px;background:#22c55e;color:#000;border:none;cursor:pointer;font-weight:600;}
+.empty{padding:28px;text-align:center;color:#4b5563;font-size:12px;}
+
+.sidebar{display:flex;flex-direction:column;gap:14px;}
+.chart-wrap{position:relative;height:180px;}
+.lux-meter{padding:14px 16px;}
+.lux-track{background:#111827;border-radius:5px;height:12px;overflow:hidden;margin:7px 0;position:relative;}
+.lux-fill{height:100%;border-radius:5px;transition:width .4s ease,background .4s ease;}
+/* FIX: threshold tick on lux meter */
+.lux-thresh-tick{position:absolute;top:0;width:2px;height:100%;background:#f59e0b;opacity:.8;transform:translateX(-50%);}
+.alert-log{max-height:200px;overflow-y:auto;}
+.alert-item{padding:9px 14px;border-bottom:1px solid #1f2937;font-size:11px;}
+.alert-item .time{color:#6b7280;font-size:10px;}
+.aVIOLATION{border-left:3px solid #ef4444;}
+.aWARNING{border-left:3px solid #f59e0b;}
+
+.aws-info{padding:12px 16px;}
+.aws-row{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid #1f2937;}
+.aws-row:last-child{border-bottom:none;}
+.aws-row .k{color:#6b7280;}
+.aws-row .v{color:#e0e0e0;font-weight:500;}
+.on{color:#22c55e!important;}
+.off{color:#9ca3af!important;}
+.sim{color:#f59e0b!important;}
+
+/* SMS alert row */
+.sms-row{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid #2a2d3a;font-size:11px;background:#111827;}
+.sms-phone-input{flex:1;padding:5px 8px;background:#1a1d27;border:1px solid #374151;border-radius:6px;color:#e0e0e0;font-size:12px;}
+.sms-phone-input:focus{outline:none;border-color:#22c55e;}
+.sms-test-btn{padding:5px 12px;border-radius:6px;background:#0f6e56;color:#9fe1cb;font-size:11px;border:none;cursor:pointer;font-weight:600;white-space:nowrap;}
+.sms-test-btn:hover{background:#166534;}
+.sms-status{font-size:10px;color:#6b7280;padding:0 16px 8px;font-style:italic;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1><span class="live-dot"></span>High Beam Detection System</h1>
+    <p>IoT + AI + AWS Cloud — Tamil Nadu Traffic Enforcement | Anna Salai, Chennai</p>
+  </div>
+  <div class="hdr-btns" id="aws-status-badge">
+    <div class="tab-nav">
+      <a href="/" class="tab-btn">3D View</a>
+      <a href="/classic" class="tab-btn active">Classic</a>
+    </div>
+    <span class="aws-badge aws-off" id="aws-badge">AWS: checking...</span>
+    <button class="btn btn-red"   onclick="simulateViolation()">+ Simulate Violation</button>
+    <button class="btn btn-teal"  onclick="exportCSV()">Export CSV</button>
+    <button class="btn btn-gray"  onclick="location.reload()">Refresh</button>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="lbl">Violations</div><div class="val v-red"    id="s-total">0</div><div class="sub">All time</div></div>
+  <div class="stat-card"><div class="lbl">Pending fines</div><div class="val v-yellow" id="s-pending">0</div><div class="sub">Awaiting payment</div></div>
+  <div class="stat-card"><div class="lbl">Fines paid</div><div class="val v-green"  id="s-paid">0</div><div class="sub">Collected</div></div>
+  <div class="stat-card"><div class="lbl">Total amount</div><div class="val v-blue"  id="s-amount">&#8377;0</div><div class="sub">Revenue</div></div>
+  <div class="stat-card"><div class="lbl">AI accuracy</div><div class="val v-purple" id="s-accuracy">—</div><div class="sub">vs false positives</div></div>
+  <div class="stat-card"><div class="lbl">Threshold</div><div class="val v-yellow"  id="s-threshold">740</div><div class="sub">lux (fixed)</div></div>
+</div>
+
+<!-- FIX: Threshold Control Banner -->
+<div class="threshold-banner">
+  <span class="thresh-label-txt">HIGH BEAM THRESHOLD</span>
+  <span class="thresh-display" id="thresh-display">740 LUX</span>
+  <div class="thresh-range-wrap">
+    <input type="range" class="thresh-range" id="thresh-range"
+           min="740" max="740" step="10" value="740" disabled
+           oninput="onThreshSlide(this.value)">
+  </div>
+  <input class="thresh-number-input" id="thresh-number" type="number"
+         min="740" max="740" value="740" readonly
+         oninput="onThreshNumber(this.value)">
+  <button class="thresh-apply-btn" id="thresh-apply-btn" onclick="applyThreshold()">
+    APPLY
+  </button>
+  <span class="thresh-hint">Permanent fine threshold: 740 lux</span>
+</div>
+
+<div class="sensor-panel">
+  <div class="si"><div class="sl">LDR Lux</div><div class="sv v-yellow" id="lv-lux">—</div></div>
+  <div class="sdiv"></div>
+  <div class="si"><div class="sl">Vehicle</div><div class="sv" id="lv-vehicle">—</div></div>
+  <div class="sdiv"></div>
+  <div class="si"><div class="sl">AI Decision</div><div class="sv"><span class="status-badge sCLEAR" id="lv-dec">CLEAR</span></div></div>
+  <div class="sdiv"></div>
+  <div class="si"><div class="sl">Confidence</div><div class="sv v-purple" id="lv-conf">—</div></div>
+  <div class="sdiv"></div>
+  <div class="si"><div class="sl">Filter Layer</div><div class="sv" style="font-size:12px;color:#888;" id="lv-reason">—</div></div>
+  <div class="sdiv"></div>
+  <div class="si"><div class="sl">Cloud Backend</div><div class="sv" style="font-size:12px;" id="lv-backend">—</div></div>
+</div>
+
+<div class="content">
+  <div class="panel">
+    <div class="ph">
+      <h2>Violation Log</h2>
+      <span style="font-size:11px;color:#6b7280;" id="vcount">0 records</span>
+    </div>
+    <table>
+      <thead><tr><th>Ref</th><th>Plate</th><th>Lux</th><th>AI Conf</th><th>Fine</th><th>Offence</th><th>Location</th><th>Time</th><th>Status</th><th>Pay</th></tr></thead>
+      <tbody id="vtable"><tr><td colspan="10" class="empty">No violations yet. System monitoring...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="sidebar">
+    <!-- Live Lux Chart -->
+    <div class="panel">
+      <div class="ph"><h2>Live Lux</h2><span id="chart-thresh-label" style="font-size:10px;color:#f59e0b;">Threshold: 740</span></div>
+      <div style="padding:10px;">
+        <div class="chart-wrap"><canvas id="luxChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Lux Meter -->
+    <div class="panel">
+      <div class="ph"><h2>Lux Meter</h2></div>
+      <div class="lux-meter">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#555;" id="lux-scale">
+          <span>0</span><span style="color:#f59e0b;" id="lux-scale-lo">300</span>
+          <span style="color:#ef4444;" id="lux-scale-hi">740</span><span>1500</span>
+        </div>
+        <div class="lux-track">
+          <div class="lux-fill" id="lux-bar" style="width:0%;background:#22c55e;"></div>
+          <div class="lux-thresh-tick" id="lux-tick" style="left:46.7%;"></div>
+        </div>
+        <div style="text-align:center;font-size:20px;font-weight:700;" id="lux-big">0</div>
+      </div>
+    </div>
+
+    <!-- AWS Services — FIX: dynamically driven by /api/service-status -->
+    <div class="panel">
+      <div class="ph">
+        <h2>AWS Services</h2>
+        <span id="aws-region" style="font-size:10px;color:#3b82f6;">ap-south-1</span>
+      </div>
+      <div class="aws-info" id="aws-service-rows">
+        <div class="aws-row"><span class="k">Database</span><span class="v" id="aws-db">—</span></div>
+        <div class="aws-row"><span class="k">SMS (SNS)</span><span class="v" id="aws-sns">—</span></div>
+        <div class="aws-row"><span class="k">Email (SES)</span><span class="v" id="aws-ses">—</span></div>
+        <div class="aws-row"><span class="k">IoT Core</span><span class="v" id="aws-iot">—</span></div>
+        <div class="aws-row"><span class="k">S3 Storage</span><span class="v" id="aws-s3">—</span></div>
+        <div class="aws-row"><span class="k">Sensor</span><span class="v" id="aws-sensor">—</span></div>
+      </div>
+      <!-- FIX: SMS test panel inside AWS panel -->
+      <div class="sms-row">
+        <span style="color:#6b7280;white-space:nowrap;">Test SMS →</span>
+        <input class="sms-phone-input" id="sms-phone" type="text"
+               placeholder="+91XXXXXXXXXX" maxlength="13">
+        <button class="sms-test-btn" onclick="testSMS()">Send Test</button>
+      </div>
+      <div class="sms-status" id="sms-status">Enter your number to test SMS delivery</div>
+    </div>
+
+    <!-- Alert Log -->
+    <div class="panel">
+      <div class="ph"><h2>Alert Log</h2></div>
+      <div class="alert-log" id="alert-log"><div class="empty">Monitoring...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── THRESHOLD STATE ─────────────────────────────────────
+let currentThreshold = 740;
+const luxHist = Array(20).fill(0), luxLbls = Array(20).fill('');
+let chart, alerts = [], lastAlertKey = '';
+
+// ── CHART INIT ──────────────────────────────────────────
+function initChart() {
+  chart = new Chart(document.getElementById('luxChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: luxLbls,
+      datasets: [
+        { label:'Lux', data:luxHist, borderColor:'#f59e0b', borderWidth:1.5,
+          pointRadius:0, tension:.4, fill:true, backgroundColor:'rgba(245,158,11,.08)' },
+        // FIX: threshold line uses dynamic data so it moves when threshold changes
+        { label:'Threshold', data:Array(20).fill(currentThreshold),
+          borderColor:'#ef4444', borderWidth:1.5, borderDash:[4,4],
+          pointRadius:0, fill:false }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ display:false },
+        y:{ min:0, max:1500, grid:{color:'#1f2937'}, ticks:{color:'#6b7280',font:{size:9}} }
+      }
+    }
+  });
+}
+
+// FIX: Update chart threshold line and meter markers when threshold changes
+function applyThresholdToUI(val) {
+  currentThreshold = val;
+  // Chart threshold line
+  if (chart) {
+    chart.data.datasets[1].data = Array(20).fill(val);
+    chart.update('none');
+  }
+  // Chart label
+  document.getElementById('chart-thresh-label').textContent = 'Threshold: ' + val;
+  // Lux meter tick mark — percentage in 0–1500 range
+  const pct = Math.min(99, (val / 1500) * 100);
+  document.getElementById('lux-tick').style.left = pct + '%';
+  // Meter scale labels
+  document.getElementById('lux-scale-hi').textContent = val;
+  document.getElementById('lux-scale-lo').textContent = Math.round(val * 0.43);
+  // Stats card
+  document.getElementById('s-threshold').textContent = val;
+  // UI controls sync
+  document.getElementById('thresh-range').value  = val;
+  document.getElementById('thresh-number').value = val;
+  document.getElementById('thresh-display').textContent = val + ' LUX';
+}
+
+function onThreshSlide(val) {
+  document.getElementById('thresh-number').value   = val;
+  document.getElementById('thresh-display').textContent = val + ' LUX';
+}
+function onThreshNumber(val) {
+  const v = 740;
+  document.getElementById('thresh-range').value  = v;
+  document.getElementById('thresh-display').textContent = v + ' LUX';
+}
+
+async function applyThreshold() {
+  const val = 740;
+  document.getElementById('thresh-number').value = val;
+  document.getElementById('thresh-range').value = val;
+  const btn = document.getElementById('thresh-apply-btn');
+  btn.textContent = 'Saving...'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/threshold', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ high_beam_threshold: val })
+    });
+    const d = await r.json();
+    if (d.success) {
+      applyThresholdToUI(d.high_beam_threshold);
+      btn.textContent = 'SAVED ✓';
+      btn.classList.add('saved');
+      setTimeout(()=>{ btn.textContent='APPLY'; btn.classList.remove('saved'); btn.disabled=false; }, 2000);
+    }
+  } catch(e) {
+    btn.textContent = 'FAILED'; btn.disabled = false;
+  }
+}
+
+// ── FIX: SMS Test ────────────────────────────────────────
+async function testSMS() {
+  const phone = document.getElementById('sms-phone').value.trim();
+  if (!phone.match(/^\+\d{10,13}$/)) {
+    document.getElementById('sms-status').textContent = 'Enter valid number with country code e.g. +919XXXXXXXXX';
+    document.getElementById('sms-status').style.color = '#ef4444';
+    return;
+  }
+  document.getElementById('sms-status').textContent = 'Sending test SMS...';
+  document.getElementById('sms-status').style.color = '#6b7280';
+  try {
+    const r = await fetch('/api/test-sms', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({phone})
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.getElementById('sms-status').textContent =
+        d.simulated ? 'Simulated (add AWS creds + ALERT_PHONE_NUMBER to .env for real SMS)' : 'SMS sent to '+phone+' ✓';
+      document.getElementById('sms-status').style.color = d.simulated ? '#f59e0b' : '#22c55e';
+    } else {
+      document.getElementById('sms-status').textContent = 'Failed: ' + (d.error||'unknown');
+      document.getElementById('sms-status').style.color = '#ef4444';
+    }
+  } catch(e) {
+    document.getElementById('sms-status').textContent = 'Request error';
+    document.getElementById('sms-status').style.color = '#ef4444';
+  }
+}
+
+// ── STATS UPDATE ─────────────────────────────────────────
+async function updateStats() {
+  try {
+    const d = await (await fetch('/api/stats')).json();
+    document.getElementById('s-total').textContent    = d.total_violations||0;
+    document.getElementById('s-pending').textContent  = d.pending_fines||0;
+    document.getElementById('s-paid').textContent     = d.fines_paid||0;
+    document.getElementById('s-amount').textContent   = '\u20B9'+(d.total_fine_amount||0).toLocaleString();
+    document.getElementById('s-accuracy').textContent = (d.accuracy||0)+'%';
+    document.getElementById('s-storage-sub') && (document.getElementById('s-storage-sub').textContent = d.storage_backend||'local');
+
+    // FIX: sync threshold from backend on every poll
+    if (d.threshold && d.threshold !== currentThreshold) {
+      applyThresholdToUI(d.threshold);
+    }
+
+    const isAWS = d.aws_active;
+    const badge = document.getElementById('aws-badge');
+    badge.textContent = isAWS ? 'AWS: Connected' : 'AWS: Simulation mode';
+    badge.className   = 'aws-badge ' + (isAWS ? 'aws-on' : 'aws-off');
+
+    // FIX: AWS panel shows real status, not hardcoded ACTIVE
+    document.getElementById('aws-db').innerHTML  = isAWS
+      ? '<span class="on">DynamoDB</span>' : '<span class="sim">SQLite</span>';
+    document.getElementById('aws-sns').innerHTML = isAWS
+      ? '<span class="on">Active</span>'   : '<span class="sim">Simulated</span>';
+    document.getElementById('aws-ses').innerHTML = isAWS
+      ? '<span class="on">Active</span>'   : '<span class="sim">Simulated</span>';
+    document.getElementById('aws-iot').innerHTML = isAWS
+      ? '<span class="on">Active</span>'   : '<span class="sim">Simulated</span>';
+    document.getElementById('aws-s3').innerHTML  = isAWS
+      ? '<span class="on">Active</span>'   : '<span class="sim">Simulated</span>';
+
+    const sensor = d.sensor||{}, result = d.result||{};
+    const lux = sensor.lux || 0;
+    document.getElementById('lv-lux').textContent     = lux;
+    document.getElementById('lv-vehicle').textContent = sensor.vehicle_present ? '\u2714 Detected' : '\u2718 Clear';
+    document.getElementById('lv-conf').textContent    = result.confidence ? (result.confidence*100).toFixed(0)+'%' : '—';
+    document.getElementById('lv-reason').textContent  = result.reason || '—';
+    document.getElementById('lv-backend').textContent = isAWS ? 'DynamoDB + SNS' : 'SQLite + Simulated';
+
+    const dec = result.decision || 'CLEAR';
+    const el = document.getElementById('lv-dec');
+    el.textContent = dec; el.className = 'status-badge s'+dec;
+
+    // FIX: lux bar and colour both reference currentThreshold
+    const hi  = currentThreshold;
+    const lo  = Math.round(hi * 0.43);
+    const max = 1500;
+    const pct = Math.min(100, (lux / max) * 100);
+    const bar = document.getElementById('lux-bar');
+    bar.style.width      = pct + '%';
+    bar.style.background = lux > hi ? '#ef4444' : lux > lo ? '#f59e0b' : '#22c55e';
+    document.getElementById('lux-big').textContent = lux;
+
+    luxHist.push(lux); luxHist.shift();
+    luxLbls.push(''); luxLbls.shift();
+    if (chart) chart.update('none');
+
+    const alertKey = `${dec}|${lux}|${result.timestamp || ''}`;
+    if ((dec === 'VIOLATION' || dec === 'WARNING') && alertKey !== lastAlertKey) {
+      lastAlertKey = alertKey;
+      alerts.unshift({ type:dec, lux, conf:result.confidence, time:new Date().toLocaleTimeString() });
+      if (alerts.length > 20) alerts.pop();
+      renderAlerts();
+    }
+  } catch(e) {}
+}
+
+async function updateTable() {
+  try {
+    const rows = await (await fetch('/api/violations')).json();
+    document.getElementById('vcount').textContent = rows.length + ' records';
+    const tb = document.getElementById('vtable');
+    if (!rows.length) {
+      tb.innerHTML='<tr><td colspan="10" class="empty">No violations yet.</td></tr>'; return;
+    }
+    // FIX: lux colour in table uses currentThreshold
+    tb.innerHTML = rows.map(r => `
+      <tr>
+        <td style="color:#6b7280;font-size:10px;">${r.id}</td>
+        <td style="font-weight:600;letter-spacing:.3px;">${r.plate_masked}</td>
+        <td style="color:${r.lux > currentThreshold ? '#ef4444':'#f59e0b'};">${r.lux}</td>
+        <td style="color:#a855f7;">${((r.confidence||0)*100).toFixed(0)}%</td>
+        <td style="color:#22c55e;font-weight:600;">\u20B9${r.fine_amount}</td>
+        <td style="color:${r.offence_count>1?'#ef4444':'#888'};">#${r.offence_count}</td>
+        <td style="color:#6b7280;font-size:10px;">${(r.location||'').substring(0,18)}</td>
+        <td style="color:#6b7280;font-size:10px;">${(r.timestamp||'').substring(11,19)}</td>
+        <td><span class="pill pill-${r.status||'PENDING'}">${r.status||'PENDING'}</span></td>
+        <td>${r.status==='PENDING'?`<button class="pay-btn" onclick="pay('${r.id}')">Pay</button>`:'—'}</td>
+      </tr>`).join('');
+  } catch(e) {}
+}
+
+function renderAlerts() {
+  const el = document.getElementById('alert-log');
+  if (!alerts.length) { el.innerHTML='<div class="empty">No alerts.</div>'; return; }
+  el.innerHTML = alerts.map(a=>`
+    <div class="alert-item a${a.type}">
+      <div style="font-weight:600;color:${a.type==='VIOLATION'?'#ef4444':'#f59e0b'};">${a.type}</div>
+      <div>Lux: ${a.lux} | Conf: ${a.conf?(a.conf*100).toFixed(0)+'%':'—'}</div>
+      <div class="time">${a.time}</div>
+    </div>`).join('');
+}
+
+async function pay(id) {
+  await fetch('/api/pay/'+id, {method:'POST'});
+  updateTable(); updateStats();
+}
+
+async function simulateViolation() {
+  const b = event.target;
+  b.disabled = true; b.textContent = 'Simulating...';
+  await fetch('/api/simulate', {method:'POST'});
+  await updateTable(); await updateStats();
+  b.disabled = false; b.textContent = '+ Simulate Violation';
+}
+
+function exportCSV() { window.location.href='/api/export'; }
+
+// ── Service Status Polling ──────────────────────────────────────
+async function updateServiceStatus() {
+  try {
+    const d = await (await fetch('/api/service-status')).json();
+    const svcs = d.services || {};
+    const isAWS = d.aws_available;
+
+    // Badge
+    const badge = document.getElementById('aws-badge');
+    if (badge) {
+      badge.textContent = isAWS ? 'AWS: Connected' : 'AWS: Simulation mode';
+      badge.className   = 'aws-badge ' + (isAWS ? 'aws-on' : 'aws-off');
+    }
+    if (d.region) {
+      const rEl = document.getElementById('aws-region');
+      if (rEl) rEl.textContent = d.region;
+    }
+
+    function svcHtml(svc, detail) {
+      const on  = svc && svc.active;
+      const col  = on ? '#22c55e' : (isAWS ? '#f59e0b' : '#9ca3af');
+      const label = svc ? svc.label : '—';
+      return `<span style="color:${col};" title="${detail||''}">${label}</span>`;
+    }
+
+    const db = document.getElementById('aws-db');
+    if (db) db.innerHTML = svcHtml(svcs.dynamodb, svcs.dynamodb?.detail);
+
+    // SNS — show phone config status
+    const sns = document.getElementById('aws-sns');
+    if (sns) {
+      const s = svcs.sns;
+      const phoneOk = s && s.sms_configured;
+      const col = (s && s.active && phoneOk) ? '#22c55e' : (s && s.active ? '#f59e0b' : '#9ca3af');
+      const label = s ? (phoneOk ? 'Direct SMS ✓' : 'Topic (no phone)') : '—';
+      sns.innerHTML = `<span style="color:${col};" title="${s?.detail||''}">${label}</span>`;
+    }
+
+    const ses = document.getElementById('aws-ses');
+    if (ses) {
+      const s = svcs.ses;
+      const col = (s && s.active && s.email_configured) ? '#22c55e' : (s && s.active ? '#f59e0b' : '#9ca3af');
+      ses.innerHTML = `<span style="color:${col};" title="${s?.detail||''}">${s ? s.label : '—'}</span>`;
+    }
+
+    const iot = document.getElementById('aws-iot');
+    if (iot) iot.innerHTML = svcHtml(svcs.iot, svcs.iot?.detail);
+
+    const s3 = document.getElementById('aws-s3');
+    if (s3) s3.innerHTML = svcHtml(svcs.s3, svcs.s3?.detail);
+
+    const sensor = document.getElementById('aws-sensor');
+    if (sensor) sensor.innerHTML = svcHtml(svcs.sensor, svcs.sensor?.detail);
+
+    // Sync threshold
+    if (d.threshold && d.threshold !== currentThreshold) {
+      applyThresholdToUI(d.threshold);
+    }
+  } catch(e) {}
+}
+
+initChart();
+applyThresholdToUI(740);
+updateStats();
+updateTable();
+updateServiceStatus();
+setInterval(updateStats,         2000);
+setInterval(updateTable,         3000);
+setInterval(updateServiceStatus, 5000);
+</script>
+</body>
+</html>

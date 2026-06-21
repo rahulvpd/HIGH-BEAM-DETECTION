@@ -1,0 +1,7 @@
+{
+    "python.terminal.useEnvFile": true,
+    "python.analysis.extraPaths": ["./backend", "./dashboard"],
+    "python.autoComplete.extraPaths": ["./backend", "./dashboard"],
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.intelliSenseEngine": "disabled"
+}

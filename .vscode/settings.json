@@ -1,0 +1,12 @@
+{
+    "python.analysis.extraPaths": [
+        "./highbeam_final/backend",
+        "./highbeam_final/dashboard"
+    ],
+    "python.autoComplete.extraPaths": [
+        "./highbeam_final/backend",
+        "./highbeam_final/dashboard"
+    ],
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.intelliSenseEngine": "disabled"
+}
